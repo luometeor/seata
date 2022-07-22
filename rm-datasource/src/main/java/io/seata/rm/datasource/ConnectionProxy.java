@@ -46,7 +46,7 @@ import static io.seata.common.DefaultValues.DEFAULT_CLIENT_REPORT_SUCCESS_ENABLE
 public class ConnectionProxy extends AbstractConnectionProxy {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionProxy.class);
-
+    // 保存着 当前connection的状态
     private final ConnectionContext context = new ConnectionContext();
 
     private final LockRetryPolicy lockRetryPolicy = new LockRetryPolicy(this);
@@ -173,7 +173,7 @@ public class ConnectionProxy extends AbstractConnectionProxy {
     }
 
     /**
-     * append lockKey
+     * append lockKey 本地锁
      *
      * @param lockKey the lock key
      */
@@ -226,6 +226,7 @@ public class ConnectionProxy extends AbstractConnectionProxy {
 
 
     private void doCommit() throws SQLException {
+        // 在commit的时候，判断是不是 GlobalTransaction 或者 GlobalLockRequire
         if (context.inGlobalTransaction()) {
             processGlobalTransactionCommit();
         } else if (context.isGlobalLockRequire()) {
@@ -236,6 +237,9 @@ public class ConnectionProxy extends AbstractConnectionProxy {
     }
 
     private void processLocalCommitWithGlobalLocks() throws SQLException {
+        // 检验全局锁，使用@GlobalLock，在执行本地事务时，去获取该数据的全局锁，如果获取不到，说明该数据正在被全局事务执行，可以进行重试获取
+        //  @GlobalLock(lockRetryInternal = 100, lockRetryTimes = 100)
+        // 本地修改事务上加上@GlobalLock，配置重试间隔为100ms，次数为100次，说明在10S内会不断重试获取全局锁，如果该记录在全局事务中，则会失败
         checkLock(context.buildLockKeys());
         try {
             targetConnection.commit();
@@ -247,6 +251,7 @@ public class ConnectionProxy extends AbstractConnectionProxy {
 
     private void processGlobalTransactionCommit() throws SQLException {
         try {
+            // 注册，申请全局锁
             register();
         } catch (TransactionException e) {
             recognizeLockKeyConflictException(e, context.buildLockKeys());
@@ -291,6 +296,7 @@ public class ConnectionProxy extends AbstractConnectionProxy {
      */
     public void changeAutoCommit() throws SQLException {
         getContext().setAutoCommitChanged(true);
+        // seata 设置auto_commit 为false
         setAutoCommit(false);
     }
 
@@ -339,6 +345,7 @@ public class ConnectionProxy extends AbstractConnectionProxy {
             // the only case that not need to retry acquire lock hear is
             //    LOCK_RETRY_POLICY_BRANCH_ROLLBACK_ON_CONFLICT == true && connection#autoCommit == true
             // because it has retry acquire lock when AbstractDMLBaseExecutor#executeAutoCommitTrue
+            // LOCK_RETRY_POLICY_BRANCH_ROLLBACK_ON_CONFLICT 是用户 配置的 策略
             if (LOCK_RETRY_POLICY_BRANCH_ROLLBACK_ON_CONFLICT && connection.getContext().isAutoCommitChanged()) {
                 return callable.call();
             } else {

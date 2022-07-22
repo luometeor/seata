@@ -57,6 +57,9 @@ public abstract class AbstractRMHandler extends AbstractExceptionHandler
         return response;
     }
 
+    /**
+     *    接收TC信息后 开始进行回滚的操作,返回BranchRollbackResponse，包含TC想要的branchStatus
+     */
     @Override
     public BranchRollbackResponse handle(BranchRollbackRequest request) {
         BranchRollbackResponse response = new BranchRollbackResponse();
@@ -64,6 +67,7 @@ public abstract class AbstractRMHandler extends AbstractExceptionHandler
             @Override
             public void execute(BranchRollbackRequest request, BranchRollbackResponse response)
                 throws TransactionException {
+                // 开始或回滚
                 doBranchRollback(request, response);
             }
         }, request, response);
@@ -107,7 +111,7 @@ public abstract class AbstractRMHandler extends AbstractExceptionHandler
     }
 
     /**
-     * Do branch rollback.
+     * Do branch rollback.  TC对所有分支事务，通过netty发送回滚请求
      *
      * @param request  the request
      * @param response the response
@@ -122,6 +126,7 @@ public abstract class AbstractRMHandler extends AbstractExceptionHandler
         if (LOGGER.isInfoEnabled()) {
             LOGGER.info("Branch Rollbacking: " + xid + " " + branchId + " " + resourceId);
         }
+        // 开启rollback 操作，返回分支状态给TC
         BranchStatus status = getResourceManager().branchRollback(request.getBranchType(), xid, branchId, resourceId,
             applicationData);
         response.setXid(xid);
@@ -146,7 +151,7 @@ public abstract class AbstractRMHandler extends AbstractExceptionHandler
         }
         AbstractTransactionRequestToRM transactionRequest = (AbstractTransactionRequestToRM)request;
         transactionRequest.setRMInboundMessageHandler(this);
-
+        // 处理 请求，包括commit，rollback 等等
         return transactionRequest.handle(context);
     }
 

@@ -25,7 +25,11 @@ import io.seata.common.util.CollectionUtils;
 import io.seata.core.context.RootContext;
 import io.seata.core.model.BranchType;
 import io.seata.rm.datasource.StatementProxy;
+import io.seata.rm.datasource.exec.mysql.MySQLInsertIgnoreExecutor;
 import io.seata.rm.datasource.exec.mysql.MySQLInsertOrUpdateExecutor;
+import io.seata.rm.datasource.exec.mysql.MySQLInsertSelectExecutor;
+import io.seata.rm.datasource.exec.oracle.OracleInsertIgnoreExecutor;
+import io.seata.rm.datasource.exec.oracle.OracleInsertSelectExecutor;
 import io.seata.rm.datasource.sql.SQLVisitorFactory;
 import io.seata.sqlparser.SQLRecognizer;
 import io.seata.sqlparser.util.JdbcConstants;
@@ -90,8 +94,8 @@ public class ExecuteTemplate {
                 switch (sqlRecognizer.getSQLType()) {
                     case INSERT:
                         executor = EnhancedServiceLoader.load(InsertExecutor.class, dbType,
-                                    new Class[]{StatementProxy.class, StatementCallback.class, SQLRecognizer.class},
-                                    new Object[]{statementProxy, statementCallback, sqlRecognizer});
+                                new Class[]{StatementProxy.class, StatementCallback.class, SQLRecognizer.class},
+                                new Object[]{statementProxy, statementCallback, sqlRecognizer});
                         break;
                     case UPDATE:
                         executor = new UpdateExecutor<>(statementProxy, statementCallback, sqlRecognizer);
@@ -112,7 +116,27 @@ public class ExecuteTemplate {
                             default:
                                 throw new NotSupportYetException(dbType + " not support to INSERT_ON_DUPLICATE_UPDATE");
                         }
-                        break;
+                    case INSERT_IGNORE:
+                        switch (dbType) {
+                            // TODO where support insert ignore
+                            case JdbcConstants.MYSQL:
+                            case JdbcConstants.ORACLE:
+                                executor = new MySQLInsertIgnoreExecutor(statementProxy, statementCallback, sqlRecognizer);
+                                break;
+                            default:
+                                throw new NotSupportYetException(dbType + " not support to insert ignore");
+                        }
+                    case INSERT_SELECT:
+                        switch (dbType) {
+                            // TODO where support insert select
+                            case JdbcConstants.MYSQL:
+                                executor = new MySQLInsertSelectExecutor(statementProxy, statementCallback, sqlRecognizer);
+                            case JdbcConstants.ORACLE:
+                                executor = new OracleInsertSelectExecutor(statementProxy, statementCallback, sqlRecognizer);
+                                break;
+                            default:
+                                throw new NotSupportYetException(dbType + " not support to insert select");
+                        }
                     default:
                         executor = new PlainExecutor<>(statementProxy, statementCallback);
                         break;

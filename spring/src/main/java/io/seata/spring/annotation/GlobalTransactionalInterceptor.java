@@ -150,8 +150,10 @@ public class GlobalTransactionalInterceptor implements ConfigurationChangeListen
         Method specificMethod = ClassUtils.getMostSpecificMethod(methodInvocation.getMethod(), targetClass);
         if (specificMethod != null && !specificMethod.getDeclaringClass().equals(Object.class)) {
             final Method method = BridgeMethodResolver.findBridgedMethod(specificMethod);
+            // GlobalTransactional 注解
             final GlobalTransactional globalTransactionalAnnotation =
                 getAnnotation(method, targetClass, GlobalTransactional.class);
+            // GlobalLock 注解
             final GlobalLock globalLockAnnotation = getAnnotation(method, targetClass, GlobalLock.class);
             boolean localDisable = disable || (degradeCheck && degradeNum >= degradeCheckAllowTimes);
             if (!localDisable) {
@@ -175,6 +177,7 @@ public class GlobalTransactionalInterceptor implements ConfigurationChangeListen
                 }
             }
         }
+        // 两个注解都没有，直接回调真正的 业务代码
         return methodInvocation.proceed();
     }
 
@@ -268,6 +271,7 @@ public class GlobalTransactionalInterceptor implements ConfigurationChangeListen
             }
         } finally {
             if (degradeCheck) {
+                // 通知TC commit
                 EVENT_BUS.post(new DegradeCheckEvent(succeed));
             }
         }

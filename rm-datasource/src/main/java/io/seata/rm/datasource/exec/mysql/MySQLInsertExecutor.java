@@ -80,18 +80,21 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
     }
 
     @Override
-    public Map<String,List<Object>> getPkValues() throws SQLException {
-        Map<String,List<Object>> pkValuesMap = null;
+    public Map<String, List<Object>> getPkValues() throws SQLException {
+        Map<String, List<Object>> pkValuesMap = null;
         List<String> pkColumnNameList = getTableMeta().getPrimaryKeyOnlyName();
+        // 判断 insert 的列名 是否有pk
         boolean isContainsPk = containsPK();
         //when there is only one pk in the table
         if (pkColumnNameList.size() == 1) {
             if (isContainsPk) {
                 pkValuesMap = getPkValuesByColumn();
-            }
-            else if (containsColumns()) {
+            } else if (containsColumns()) {
                 pkValuesMap = getPkValuesByAuto();
             }
+            // insert into test  select * from test01
+            // 上面两种情况是有没有列的情况，既然insert 没写列，那么values必然要全写列 ，当然 pk可以为null
+            // eg： insert into simple values (null,1);
             else {
                 pkValuesMap = getPkValuesByColumn();
             }
@@ -100,7 +103,7 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
             //1,all pk columns are filled value.
             //2,the auto increment pk column value is null, and other pk value are not null.
             pkValuesMap = getPkValuesByColumn();
-            for (String columnName:pkColumnNameList) {
+            for (String columnName : pkColumnNameList) {
                 if (!pkValuesMap.containsKey(columnName)) {
                     ColumnMeta pkColumnMeta = getTableMeta().getColumnMeta(columnName);
                     if (Objects.nonNull(pkColumnMeta) && pkColumnMeta.isAutoincrement()) {
@@ -110,6 +113,7 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
                 }
             }
         }
+        LOGGER.info("获取的主键：{}", pkValuesMap);
         return pkValuesMap;
     }
 
@@ -134,8 +138,10 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
         ResultSet genKeys = null;
         boolean isManualCloseResultSet = false;
         try {
+            // 普通的insertBatch 可以获取主键值,对于正常的insert操作并不会报错
             genKeys = statementProxy.getGeneratedKeys();
         } catch (SQLException e) {
+            // 这里仅仅只是为了 避免误删数据
             // java.sql.SQLException: Generated keys not requested. You need to
             // specify Statement.RETURN_GENERATED_KEYS to
             // Statement.executeUpdate() or Connection.prepareStatement().
@@ -148,6 +154,7 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
                     // do auto increment base LAST_INSERT_ID and variable `auto_increment_increment`
                     if (updateCount > 1 && canAutoIncrement(pkMetaMap)) {
                         genKeys.next();
+                        // enKeys.getString(1) 获取当前记录的第1列数据，一般情况下为0
                         BigDecimal firstId = new BigDecimal(genKeys.getString(1));
                         return autoGeneratePks(firstId, autoColumnName, updateCount);
                     } else {
@@ -162,6 +169,7 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
                 throw e;
             }
         }
+        // 只能获取一个 pk，也就是 不适用批量插入的情况
         List<Object> pkValues = new ArrayList<>();
         while (genKeys.next()) {
             Object v = genKeys.getObject(1);
@@ -181,11 +189,11 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
     }
 
     @Override
-    public Map<String,List<Object>> getPkValuesByColumn() throws SQLException {
-        Map<String,List<Object>> pkValuesMap  = parsePkValuesFromStatement();
+    public Map<String, List<Object>> getPkValuesByColumn() throws SQLException {
+        Map<String, List<Object>> pkValuesMap = parsePkValuesFromStatement();
         Set<String> keySet = new HashSet<>(pkValuesMap.keySet());
         //auto increment
-        for (String pkKey:keySet) {
+        for (String pkKey : keySet) {
             List<Object> pkValues = pkValuesMap.get(pkKey);
             // pk auto generated while single insert primary key is expression
             if (pkValues.size() == 1 && (pkValues.get(0) instanceof SqlMethodExpr)) {
@@ -231,7 +239,7 @@ public class MySQLInsertExecutor extends BaseInsertExecutor implements Defaultab
         }
 
         Map<String, List<Object>> pkValuesMap = new HashMap<>(1, 1.001f);
-        pkValuesMap.put(autoColumnName,pkValues);
+        pkValuesMap.put(autoColumnName, pkValues);
         return pkValuesMap;
     }
 

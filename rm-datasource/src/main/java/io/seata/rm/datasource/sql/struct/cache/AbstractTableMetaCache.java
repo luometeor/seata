@@ -58,6 +58,7 @@ public abstract class AbstractTableMetaCache implements TableMetaCache {
         final String key = getCacheKey(connection, tableName, resourceId);
         tmeta = TABLE_META_CACHE.get(key, mappingFunction -> {
             try {
+                // 从 connection 跟 tableName 中进行 fetch 新的数据库表信息
                 return fetchSchema(connection, tableName);
             } catch (SQLException e) {
                 LOGGER.error("get table meta of the table `{}` error: {}", tableName, e.getMessage(), e);

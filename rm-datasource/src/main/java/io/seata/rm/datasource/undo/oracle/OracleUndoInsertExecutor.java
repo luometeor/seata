@@ -63,7 +63,7 @@ public class OracleUndoInsertExecutor extends AbstractUndoExecutor {
         }
     }
 
-    private String generateDeleteSql(List<Row> rows, TableRecords afterImage) {
+    protected String generateDeleteSql(List<Row> rows, TableRecords afterImage) {
         List<String> pkNameList = getOrderedPkList(afterImage, rows.get(0), JdbcConstants.ORACLE).stream().map(
             e -> e.getName()).collect(Collectors.toList());
         String whereSql = SqlGenerateUtils.buildWhereConditionByPKs(pkNameList, JdbcConstants.ORACLE);

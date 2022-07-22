@@ -53,6 +53,7 @@ public class XID {
      * @return the string
      */
     public static String generateXID(long tranId) {
+        // IP:PORT:TRANSACTION_ID
         return new StringBuilder().append(ipAddress).append(IP_PORT_SPLIT_CHAR).append(port).append(IP_PORT_SPLIT_CHAR).append(tranId).toString();
     }
 

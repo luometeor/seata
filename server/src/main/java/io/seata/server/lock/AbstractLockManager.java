@@ -51,6 +51,7 @@ public abstract class AbstractLockManager implements LockManager {
         if (branchSession == null) {
             throw new IllegalArgumentException("branchSession can't be null for memory/file locker.");
         }
+        // 从执行器中获取 lockKey
         String lockKey = branchSession.getLockKey();
         if (StringUtils.isNullOrEmpty(lockKey)) {
             // no lock
@@ -62,6 +63,7 @@ public abstract class AbstractLockManager implements LockManager {
             // no lock
             return true;
         }
+        // insert lock
         return getLocker(branchSession).acquireLock(locks, autoCommit, skipCheckLock);
     }
 
@@ -85,6 +87,7 @@ public abstract class AbstractLockManager implements LockManager {
             // no lock
             return true;
         }
+        // 根据 preparedUndoLog 获取 append的lock 进行加 行锁
         List<RowLock> locks = collectRowLocks(lockKey, resourceId, xid);
         try {
             return getLocker().isLockable(locks);
@@ -156,8 +159,9 @@ public abstract class AbstractLockManager implements LockManager {
      */
     protected List<RowLock> collectRowLocks(String lockKey, String resourceId, String xid, Long transactionId,
         Long branchID) {
+        // 行锁集合
         List<RowLock> locks = new ArrayList<>();
-
+        // lockKey在生成的时候，在prepareUndoLog 的时候，根据后镜像的 pk值 构建的
         String[] tableGroupedLockKeys = lockKey.split(";");
         for (String tableGroupedLockKey : tableGroupedLockKeys) {
             int idx = tableGroupedLockKey.indexOf(":");
@@ -173,6 +177,7 @@ public abstract class AbstractLockManager implements LockManager {
             if (pks == null || pks.length == 0) {
                 return locks;
             }
+            // 每一个 pk 都会生成一条行锁纪录
             for (String pk : pks) {
                 if (StringUtils.isNotBlank(pk)) {
                     RowLock rowLock = new RowLock();

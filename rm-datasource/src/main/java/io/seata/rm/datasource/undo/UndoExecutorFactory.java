@@ -36,6 +36,7 @@ public class UndoExecutorFactory {
         UndoExecutorHolder holder = UndoExecutorHolderFactory.getUndoExecutorHolder(dbType.toLowerCase());
         switch (sqlUndoLog.getSqlType()) {
             case INSERT:
+            case INSERT_SELECT:
                 result = holder.getInsertExecutor(sqlUndoLog);
                 break;
             case UPDATE:
@@ -44,8 +45,11 @@ public class UndoExecutorFactory {
             case DELETE:
                 result = holder.getDeleteExecutor(sqlUndoLog);
                 break;
+            case INSERT_IGNORE:
+                result = holder.getInsertIgnoreExecutor(sqlUndoLog);
+                break;
             default:
-                throw new NotSupportYetException(String.format("sql type: %s not support",sqlUndoLog.getSqlType()));
+                throw new NotSupportYetException(String.format("sql type: %s not support", sqlUndoLog.getSqlType()));
         }
         return result;
     }

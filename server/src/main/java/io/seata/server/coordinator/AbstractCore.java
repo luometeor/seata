@@ -76,10 +76,13 @@ public abstract class AbstractCore implements Core {
         GlobalSession globalSession = assertGlobalSessionNotNull(xid, false);
         return SessionHolder.lockAndExecute(globalSession, () -> {
             globalSessionStatusCheck(globalSession);
+            // 添加监听器 作用：??
             globalSession.addSessionLifecycleListener(SessionHolder.getRootSessionManager());
+            // 创建新的 分支会话
             BranchSession branchSession = SessionHelper.newBranchByGlobal(globalSession, branchType, resourceId,
                     applicationData, lockKeys, clientId);
             MDC.put(RootContext.MDC_KEY_BRANCH_ID, String.valueOf(branchSession.getBranchId()));
+            // 添加全局纪录锁
             branchSessionLock(globalSession, branchSession);
             try {
                 globalSession.addBranch(branchSession);
@@ -186,6 +189,7 @@ public abstract class AbstractCore implements Core {
             request.setResourceId(branchSession.getResourceId());
             request.setApplicationData(branchSession.getApplicationData());
             request.setBranchType(branchSession.getBranchType());
+            // 发送RM 回滚请求，返会分支状态
             return branchRollbackSend(request, globalSession, branchSession);
         } catch (IOException | TimeoutException e) {
             throw new BranchTransactionException(FailedToSendBranchRollbackRequest,

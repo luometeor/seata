@@ -378,6 +378,7 @@ public class GlobalSession implements SessionLifecycle, SessionStorable {
         this.transactionServiceGroup = transactionServiceGroup;
         this.transactionName = transactionName;
         this.timeout = timeout;
+        // 根据 transaction 生成 XID
         this.xid = XID.generateXID(transactionId);
     }
 

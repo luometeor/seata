@@ -18,6 +18,8 @@ package io.seata.sqlparser.druid.oracle;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
 import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
@@ -31,6 +33,7 @@ import com.alibaba.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.druid.sql.dialect.oracle.ast.stmt.OracleInsertStatement;
 import com.alibaba.druid.sql.dialect.oracle.visitor.OracleOutputVisitor;
 import io.seata.common.util.CollectionUtils;
+import io.seata.common.util.StringUtils;
 import io.seata.sqlparser.SQLInsertRecognizer;
 import io.seata.sqlparser.SQLType;
 import io.seata.sqlparser.struct.NotPlaceholderExpr;
@@ -47,6 +50,14 @@ public class OracleInsertRecognizer extends BaseOracleRecognizer implements SQLI
 
     private final OracleInsertStatement ast;
 
+    private static final String PREFIX = "/*+";
+
+    private static final String SUFFIX = "*/";
+
+    private static final String IGNORE_HINT = "IGNORE_ROW_ON_DUPKEY_INDEX(";
+
+    private String hintColumnName;
+
     /**
      * Instantiates a new My sql insert recognizer.
      *
@@ -55,12 +66,13 @@ public class OracleInsertRecognizer extends BaseOracleRecognizer implements SQLI
      */
     public OracleInsertRecognizer(String originalSQL, SQLStatement ast) {
         super(originalSQL);
-        this.ast = (OracleInsertStatement)ast;
+        this.ast = (OracleInsertStatement) ast;
+        this.hintColumnName = getHintColumn();
     }
 
     @Override
     public SQLType getSQLType() {
-        return SQLType.INSERT;
+        return StringUtils.isNotBlank(hintColumnName) ? SQLType.INSERT_IGNORE : SQLType.INSERT;
     }
 
     @Override
@@ -98,7 +110,7 @@ public class OracleInsertRecognizer extends BaseOracleRecognizer implements SQLI
         List<String> list = new ArrayList<>(columnSQLExprs.size());
         for (SQLExpr expr : columnSQLExprs) {
             if (expr instanceof SQLIdentifierExpr) {
-                list.add(((SQLIdentifierExpr)expr).getName());
+                list.add(((SQLIdentifierExpr) expr).getName());
             } else {
                 wrapSQLParsingException(expr);
             }
@@ -142,7 +154,17 @@ public class OracleInsertRecognizer extends BaseOracleRecognizer implements SQLI
 
     @Override
     public List<String> getInsertParamsValue() {
-        return null;
+        List<SQLInsertStatement.ValuesClause> valuesList = ast.getValuesList();
+        List<String> list = new ArrayList<>();
+        for (SQLInsertStatement.ValuesClause m : valuesList) {
+            String values = m.toString().replace("VALUES", "").trim();
+            // when all params is constant, the length of values less than 1
+            if (values.length() > 1) {
+                values = values.substring(1, values.length() - 1);
+            }
+            list.add(values);
+        }
+        return list;
     }
 
     @Override
@@ -151,7 +173,49 @@ public class OracleInsertRecognizer extends BaseOracleRecognizer implements SQLI
     }
 
     @Override
+    public String getQuerySQL() {
+        return null;
+    }
+
+    @Override
+    public String getHintColumnName() {
+        return hintColumnName;
+    }
+
+    @Override
+    public boolean isIgnore() {
+        return StringUtils.isNotBlank(hintColumnName);
+    }
+
+
+    @Override
     protected SQLStatement getAst() {
         return ast;
+    }
+
+    /**
+     * get hint column name
+     *
+     * @return column name
+     */
+    private String getHintColumn() {
+        AtomicReference<String> columnName = new AtomicReference<>();
+        ast.getHints().forEach(sqlHint -> {
+            String hint = sqlHint.toString();
+            if (hint.startsWith(PREFIX) && hint.endsWith(SUFFIX)) {
+                hint = hint.replaceAll(" ", "");
+                StringBuilder matchHint = new StringBuilder(IGNORE_HINT);
+                // TODO how about tableName contain “” or columnName comtain “” it will just like 正常的insert操作
+                matchHint.append(getTableName()).append(")").append("(");
+                int startIndex = hint.indexOf(matchHint.toString());
+                if (startIndex != -1) {
+                    int endIndex = hint.indexOf(")", startIndex);
+                    if (endIndex != -1) {
+                        columnName.set(hint.substring(startIndex + matchHint.length(), endIndex));
+                    }
+                }
+            }
+        });
+        return columnName.get();
     }
 }

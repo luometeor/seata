@@ -139,6 +139,7 @@ public abstract class AbstractDMLBaseExecutor<T, S extends Statement> extends Ba
         ConnectionProxy connectionProxy = statementProxy.getConnectionProxy();
         try {
             connectionProxy.changeAutoCommit();
+            // 尝试获取本地锁
             return new LockRetryPolicy(connectionProxy).execute(() -> {
                 T result = executeAutoCommitFalse(args);
                 connectionProxy.commit();
@@ -182,6 +183,7 @@ public abstract class AbstractDMLBaseExecutor<T, S extends Statement> extends Ba
 
         @Override
         public <T> T execute(Callable<T> callable) throws Exception {
+            // 是否进行 lock-retry
             if (LOCK_RETRY_POLICY_BRANCH_ROLLBACK_ON_CONFLICT) {
                 return doRetryOnLockConflict(callable);
             } else {

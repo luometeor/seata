@@ -267,7 +267,7 @@ public abstract class AbstractUndoLogManager implements UndoLogManager {
                 if (originalAutoCommit = conn.getAutoCommit()) {
                     conn.setAutoCommit(false);
                 }
-
+                // select * from UNDO_LOG where branchId = ? and xid = ? FOR UPDATE
                 // Find UNDO LOG
                 selectPST = conn.prepareStatement(SELECT_UNDO_LOG_SQL);
                 selectPST.setLong(1, branchId);
@@ -305,12 +305,15 @@ public abstract class AbstractUndoLogManager implements UndoLogManager {
                         if (sqlUndoLogs.size() > 1) {
                             Collections.reverse(sqlUndoLogs);
                         }
+                        // 一定会生成 undo log 吗
                         for (SQLUndoLog sqlUndoLog : sqlUndoLogs) {
                             TableMeta tableMeta = TableMetaCacheFactory.getTableMetaCache(dataSourceProxy.getDbType()).getTableMeta(
                                 conn, sqlUndoLog.getTableName(), dataSourceProxy.getResourceId());
                             sqlUndoLog.setTableMeta(tableMeta);
+                            //  AbstractUndoExecutor 就是根据 beforeImage and AfterImage 构建 undoSql
                             AbstractUndoExecutor undoExecutor = UndoExecutorFactory.getUndoExecutor(
                                 dataSourceProxy.getDbType(), sqlUndoLog);
+                            // 开始执行 undo 逻辑 ,再根据 模板方法 执行 具体的 undoExecutor生成undoSQl 进行回滚
                             undoExecutor.executeOn(conn);
                         }
                     } finally {
@@ -329,6 +332,7 @@ public abstract class AbstractUndoLogManager implements UndoLogManager {
                 // See https://github.com/seata/seata/issues/489
 
                 if (exists) {
+                    // 删除日志
                     deleteUndoLog(xid, branchId, conn);
                     conn.commit();
                     if (LOGGER.isInfoEnabled()) {

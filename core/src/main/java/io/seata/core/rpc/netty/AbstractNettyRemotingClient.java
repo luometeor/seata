@@ -123,6 +123,7 @@ public abstract class AbstractNettyRemotingClient extends AbstractNettyRemoting 
             mergeSendExecutorService.submit(new MergedSendRunnable());
         }
         super.init();
+        // start netty rpc client
         clientBootstrap.start();
     }
 

@@ -95,7 +95,7 @@ public abstract class BaseTransactionalExecutor<T, S extends Statement> implemen
      * @param sqlRecognizer     the sql recognizer
      */
     public BaseTransactionalExecutor(StatementProxy<S> statementProxy, StatementCallback<T, S> statementCallback,
-        SQLRecognizer sqlRecognizer) {
+                                     SQLRecognizer sqlRecognizer) {
         this.statementProxy = statementProxy;
         this.statementCallback = statementCallback;
         this.sqlRecognizer = sqlRecognizer;
@@ -109,7 +109,7 @@ public abstract class BaseTransactionalExecutor<T, S extends Statement> implemen
      * @param sqlRecognizers    the multi sql recognizer
      */
     public BaseTransactionalExecutor(StatementProxy<S> statementProxy, StatementCallback<T, S> statementCallback,
-        List<SQLRecognizer> sqlRecognizers) {
+                                     List<SQLRecognizer> sqlRecognizers) {
         this.statementProxy = statementProxy;
         this.statementCallback = statementCallback;
         this.sqlRecognizers = sqlRecognizers;
@@ -164,6 +164,7 @@ public abstract class BaseTransactionalExecutor<T, S extends Statement> implemen
 
     /**
      * build buildOrderCondition
+     *
      * @param recognizer
      * @param paramAppenderList
      * @return the string
@@ -180,6 +181,7 @@ public abstract class BaseTransactionalExecutor<T, S extends Statement> implemen
 
     /**
      * build buildLimitCondition
+     *
      * @param recognizer
      * @param paramAppenderList
      * @return the string
@@ -257,7 +259,8 @@ public abstract class BaseTransactionalExecutor<T, S extends Statement> implemen
         }
         ConnectionProxy connectionProxy = statementProxy.getConnectionProxy();
         tableMeta = TableMetaCacheFactory.getTableMetaCache(connectionProxy.getDbType())
-            .getTableMeta(connectionProxy.getTargetConnection(), tableName, connectionProxy.getDataSourceProxy().getResourceId());
+                //根据接口的实现类 获取 tableMeta
+                .getTableMeta(connectionProxy.getTargetConnection(), tableName, connectionProxy.getDataSourceProxy().getResourceId());
         return tableMeta;
     }
 
@@ -430,9 +433,10 @@ public abstract class BaseTransactionalExecutor<T, S extends Statement> implemen
         suffix.append(WHERE).append(SqlGenerateUtils.buildWhereConditionByPKs(pkColumnNameList, rowSize, getDbType()));
         StringJoiner selectSQLJoin = new StringJoiner(", ", prefix.toString(), suffix.toString());
         List<String> insertColumns = recognizer.getInsertColumns();
+        List<String> delEscapeColumns = ColumnUtils.delEscape(insertColumns, getDbType());
         if (ONLY_CARE_UPDATE_COLUMNS && CollectionUtils.isNotEmpty(insertColumns)) {
             Set<String> columns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            columns.addAll(recognizer.getInsertColumns());
+            columns.addAll(delEscapeColumns);
             columns.addAll(pkColumnNameList);
             for (String columnName : columns) {
                 selectSQLJoin.add(columnName);

@@ -54,6 +54,7 @@ public class TransactionalTemplate {
             throw new ShouldNeverHappenException("transactionInfo does not exist");
         }
         // 1.1 Get current transaction, if not null, the tx role is 'GlobalTransactionRole.Participant'.
+        // 已经存在的话，那么就是RM，也是'GlobalTransactionRole.Participant'
         GlobalTransaction tx = GlobalTransactionContext.getCurrent();
 
         // 1.2 Handle the transaction propagation.
@@ -110,20 +111,24 @@ public class TransactionalTemplate {
 
             // 1.3 If null, create new transaction with role 'GlobalTransactionRole.Launcher'.
             if (tx == null) {
+                // 创建TM，'GlobalTransactionRole.Launcher'
                 tx = GlobalTransactionContext.createNew();
             }
 
             // set current tx config to holder
+            // @GolbalLock注解的信息 绑定到 threadLocal 中
             GlobalLockConfig previousConfig = replaceGlobalLockConfig(txInfo);
 
             try {
-                // 2. If the tx role is 'GlobalTransactionRole.Launcher', send the request of beginTransaction to TC,
+                // 2. If the tx role is 'GlobalTransactionRole.Launcher', send the request of beginTransaction to TC [to get XID],
                 //    else do nothing. Of course, the hooks will still be triggered.
+                // 获取XID
                 beginTransaction(txInfo, tx);
 
                 Object rs;
                 try {
                     // Do Your Business
+                    // 回调执行业务
                     rs = business.execute();
                 } catch (Throwable ex) {
                     // 3. The needed business exception to rollback.

@@ -52,6 +52,7 @@ public class PreparedStatementProxy extends AbstractPreparedStatementProxy
 
     @Override
     public boolean execute() throws SQLException {
+        // statement 对  DruidPooledPreparedStatement 进行增强了
         return ExecuteTemplate.execute(this, (statement, args) -> statement.execute());
     }
 

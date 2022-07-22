@@ -33,7 +33,9 @@ public class RMClient {
     public static void init(String applicationId, String transactionServiceGroup) {
         RmNettyRemotingClient rmNettyRemotingClient = RmNettyRemotingClient.getInstance(applicationId, transactionServiceGroup);
         rmNettyRemotingClient.setResourceManager(DefaultResourceManager.get());
+        // 初始化 接收TC消息的监听器
         rmNettyRemotingClient.setTransactionMessageHandler(DefaultRMHandler.get());
+        // 初始化 rpc 客户端 通过netty 实现自定义协议
         rmNettyRemotingClient.init();
     }
 

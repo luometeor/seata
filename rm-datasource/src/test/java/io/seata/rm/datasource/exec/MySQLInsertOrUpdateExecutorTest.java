@@ -18,6 +18,7 @@ package io.seata.rm.datasource.exec;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +68,7 @@ public class MySQLInsertOrUpdateExecutorTest {
     private HashMap<String,Integer> pkIndexMap;
 
     @BeforeEach
-    public void init() {
+    public void init() throws SQLException {
         ConnectionProxy connectionProxy = mock(ConnectionProxy.class);
         when(connectionProxy.getDbType()).thenReturn(JdbcConstants.MYSQL);
 
@@ -77,6 +78,7 @@ public class MySQLInsertOrUpdateExecutorTest {
         StatementCallback statementCallback = mock(StatementCallback.class);
         sqlInsertRecognizer = mock(SQLInsertRecognizer.class);
         tableMeta = mock(TableMeta.class);
+    //    when(tableMeta.getPrimaryKeyOnlyName()).thenReturn(Collections.singletonList(ID_COLUMN));
         insertOrUpdateExecutor = Mockito.spy(new MySQLInsertOrUpdateExecutor(statementProxy, statementCallback, sqlInsertRecognizer));
 
         pkIndexMap = new HashMap<String,Integer>(){
@@ -112,7 +114,7 @@ public class MySQLInsertOrUpdateExecutorTest {
 
     @Test
     public void testBuildImageSQL(){
-        String selectSQLStr = "SELECT *  FROM null WHERE (user_id) IN(?,?)  OR (id) IN(?,?) ";
+        String selectSQLStr = "SELECT *  FROM null WHERE (user_id) in((?),(?)) OR (id) in((?),(?)) ";
         String paramAppenderListStr = "{[user_id]=[userId1, userId2], [id]=[100, 101]}";
         mockImageParamperterMap_contain_constant();
         List<String> insertParamsList = new ArrayList<>();
@@ -140,7 +142,7 @@ public class MySQLInsertOrUpdateExecutorTest {
             TableRecords tableRecords = new TableRecords();
             String selectSQL = insertOrUpdateExecutor.buildImageSQL(tableMeta);
             HashMap<List<String>, List<Object>> paramAppenderMap = insertOrUpdateExecutor.getParamAppenderMap();
-            doReturn(tableRecords).when(insertOrUpdateExecutor).buildTableRecords2(tableMeta, selectSQL, paramAppenderMap);
+            doReturn(tableRecords).when(insertOrUpdateExecutor).buildTableRecords2(tableMeta, selectSQL, new ArrayList<>(paramAppenderMap.values()));
             insertOrUpdateExecutor.setSelectSQL(selectSQL);
             TableRecords tableRecordsResult = insertOrUpdateExecutor.beforeImage();
             Assertions.assertEquals(tableRecords,tableRecordsResult);
@@ -150,6 +152,9 @@ public class MySQLInsertOrUpdateExecutorTest {
     }
 
     private void mockAllIndexes(){
+        List<String> primaryKeyOnlyNameList = new ArrayList<>();
+        primaryKeyOnlyNameList.add("id");
+
         Map<String, IndexMeta> allIndex = new HashMap<>();
         IndexMeta primary = new IndexMeta();
         primary.setIndextype(IndexType.PRIMARY);
@@ -165,6 +170,8 @@ public class MySQLInsertOrUpdateExecutorTest {
         unique.setValues(Lists.newArrayList(columnMetaUnique));
         allIndex.put("user_id", unique);
         when(tableMeta.getAllIndexes()).thenReturn(allIndex);
+        when(tableMeta.getPrimaryKeyOnlyName()).thenReturn(primaryKeyOnlyNameList);
+
     }
 
 

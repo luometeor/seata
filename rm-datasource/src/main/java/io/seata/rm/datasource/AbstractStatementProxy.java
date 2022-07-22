@@ -249,6 +249,7 @@ public abstract class AbstractStatementProxy<T extends Statement> implements Sta
 
     @Override
     public ResultSet getGeneratedKeys() throws SQLException {
+        // 在AT模式开始的时候，已经设置好了PK的列名
         ResultSet rs = targetStatement.getGeneratedKeys();
         if (null == scrollableGeneratedKeysCache || !rs.isAfterLast()) {
             //Conditions for flushing the cache:

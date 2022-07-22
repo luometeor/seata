@@ -87,7 +87,6 @@ public class OracleTableMetaCache extends AbstractTableMetaCache {
 
         if (tableName.contains("\"")) {
             tableName = tableName.replace("\"", "");
-
         } else {
             tableName = tableName.toUpperCase();
         }

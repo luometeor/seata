@@ -102,12 +102,15 @@ public abstract class AbstractConnectionProxy implements Connection {
         return new StatementProxy(this, targetStatement);
     }
 
+    // 外部 orm 调用prepareStatement 进行预编译sql做了一些工作  【?如果办到外部orm框架调用prepareStatement时执行此处代码，还是说他替代了外部的orm的ps? 代理对象如何生成？？】
     @Override
     public PreparedStatement prepareStatement(String sql) throws SQLException {
         String dbType = getDbType();
         // support oracle 10.2+
         PreparedStatement targetPreparedStatement = null;
+        // 如果是 AT 模式
         if (BranchType.AT == RootContext.getBranchType()) {
+            // 提前准备ast
             List<SQLRecognizer> sqlRecognizers = SQLVisitorFactory.get(sql, dbType);
             if (sqlRecognizers != null && sqlRecognizers.size() == 1) {
                 SQLRecognizer sqlRecognizer = sqlRecognizers.get(0);
@@ -116,7 +119,8 @@ public abstract class AbstractConnectionProxy implements Connection {
                             sqlRecognizer.getTableName(), getDataSourceProxy().getResourceId());
                     String[] pkNameArray = new String[tableMeta.getPrimaryKeyOnlyName().size()];
                     tableMeta.getPrimaryKeyOnlyName().toArray(pkNameArray);
-                    targetPreparedStatement = getTargetConnection().prepareStatement(sql,pkNameArray);
+                    // 代理的 PreparedStatement 会生成给定数组的主键 返回自增追加按
+                    targetPreparedStatement = getTargetConnection().prepareStatement(sql, pkNameArray);
                 }
             }
         }

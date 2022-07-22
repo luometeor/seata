@@ -120,11 +120,12 @@ public class LockStoreDataBaseDAO implements LockStore {
             }
             List<LockDO> unrepeatedLockDOs = lockDOs;
 
-            //check lock
+            //check lock @GlobalLock 需要检测
             if (!skipCheckLock) {
 
                 boolean canLock = true;
                 //query
+                // 先查询
                 String checkLockSQL = LockStoreSqlFactory.getLogStoreSql(dbType).getCheckLockableSql(lockTable, lockDOs.size());
                 ps = conn.prepareStatement(checkLockSQL);
                 for (int i = 0; i < lockDOs.size(); i++) {
@@ -135,6 +136,7 @@ public class LockStoreDataBaseDAO implements LockStore {
                 boolean failFast = false;
                 while (rs.next()) {
                     String dbXID = rs.getString(ServerTableColumnsName.LOCK_TABLE_XID);
+                    // 根据XID判断是否 全局事务已经开启
                     if (!StringUtils.equals(dbXID, currentXID)) {
                         if (LOGGER.isInfoEnabled()) {
                             String dbPk = rs.getString(ServerTableColumnsName.LOCK_TABLE_PK);
@@ -154,6 +156,7 @@ public class LockStoreDataBaseDAO implements LockStore {
 
                     dbExistedRowKeys.add(rs.getString(ServerTableColumnsName.LOCK_TABLE_ROW_KEY));
                 }
+                // 全局锁已经有人了，出现冲突，回滚， 异常信息为 ：LockKeyConflictFailFast
                 if (!canLock) {
                     conn.rollback();
                     if (failFast) {
@@ -175,6 +178,8 @@ public class LockStoreDataBaseDAO implements LockStore {
             // lock
             if (unrepeatedLockDOs.size() == 1) {
                 LockDO lockDO = unrepeatedLockDOs.get(0);
+                // 真正的 插入纪录 lock_table 纪录，作为全局锁
+                // 插入一条，插入失败的话 回滚
                 if (!doAcquireLock(conn, lockDO)) {
                     if (LOGGER.isInfoEnabled()) {
                         LOGGER.info("Global lock acquire failed, xid {} branchId {} pk {}", lockDO.getXid(), lockDO.getBranchId(), lockDO.getPk());
@@ -183,6 +188,7 @@ public class LockStoreDataBaseDAO implements LockStore {
                     return false;
                 }
             } else {
+                // 批量插入，插入失败的话 回滚
                 if (!doAcquireLocks(conn, unrepeatedLockDOs)) {
                     if (LOGGER.isInfoEnabled()) {
                         LOGGER.info("Global lock batch acquire failed, xid {} branchId {} pks {}", unrepeatedLockDOs.get(0).getXid(),
@@ -393,6 +399,7 @@ public class LockStoreDataBaseDAO implements LockStore {
                 ps.setString(i + 1, lockDOs.get(i).getRowKey());
             }
             rs = ps.executeQuery();
+            // 有相同的xid的话，那么就加锁失败
             while (rs.next()) {
                 String xid = rs.getString("xid");
                 if (!StringUtils.equals(xid, lockDOs.get(0).getXid())) {

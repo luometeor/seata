@@ -264,6 +264,7 @@ public class DefaultCore implements Core {
 
     @Override
     public GlobalStatus rollback(String xid) throws TransactionException {
+        // get globalSession  info
         GlobalSession globalSession = SessionHolder.findGlobalSession(xid);
         if (globalSession == null) {
             return GlobalStatus.Finished;
@@ -281,7 +282,7 @@ public class DefaultCore implements Core {
         if (!shouldRollBack) {
             return globalSession.getStatus();
         }
-
+        // 执行全局 回滚
         boolean rollbackSuccess = doGlobalRollback(globalSession, false);
         return rollbackSuccess ? GlobalStatus.Rollbacked : globalSession.getStatus();
     }
@@ -295,6 +296,7 @@ public class DefaultCore implements Core {
         if (globalSession.isSaga()) {
             success = getCore(BranchType.SAGA).doGlobalRollback(globalSession, retrying);
         } else {
+            // 循环所有分支的事务
             Boolean result = SessionHelper.forEach(globalSession.getReverseSortedBranches(), branchSession -> {
                 BranchStatus currentBranchStatus = branchSession.getStatus();
                 if (currentBranchStatus == BranchStatus.PhaseOne_Failed) {
@@ -302,6 +304,7 @@ public class DefaultCore implements Core {
                     return CONTINUE;
                 }
                 try {
+                    // 执行分支回滚
                     BranchStatus branchStatus = branchRollback(globalSession, branchSession);
                     switch (branchStatus) {
                         case PhaseTwo_Rollbacked:
@@ -336,6 +339,12 @@ public class DefaultCore implements Core {
         }
         // In db mode, lock and branch data residual problems may occur.
         // Therefore, execution needs to be delayed here and cannot be executed synchronously.
+        // 在db模式下，多个副本中存在数据不一致的问题，导致出现新的分支
+        //回滚时进行事务注册。
+        // 1. 新建分支事务和回滚分支事务没有数据关联
+        // 2. 新分支事务与回滚分支事务有数据关联
+        //第二个查询可以解决第一个问题，如果是第二个问题，可能会导致回滚
+        //由于数据更改而失败。
         if (success && retrying) {
             SessionHelper.endRollbacked(globalSession);
 

@@ -15,10 +15,7 @@
  */
 package io.seata.rm.datasource.sql.struct;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -186,6 +183,13 @@ public class TableMeta {
         } else {
             return CollectionUtils.toUpperList(cols).containsAll(CollectionUtils.toUpperList(pk));
         }
+    }
+
+    public List<String> getDefaultTableColumn() {
+        return allColumns.values().stream()
+                .sorted(Comparator.comparingInt(ColumnMeta::getOrdinalPosition))
+                .map(ColumnMeta::getColumnName)
+                .collect(Collectors.toList());
     }
 
     @Override

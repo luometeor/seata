@@ -132,9 +132,17 @@ public class DataCompareUtils {
             if (beforeImage.getTableName().equalsIgnoreCase(afterImage.getTableName())
                     && CollectionUtils.isSizeEquals(beforeImage.getRows(), afterImage.getRows())) {
                 //when image is EmptyTableRecords, getTableMeta will throw an exception
+                // 行数相同的话
                 if (CollectionUtils.isEmpty(beforeImage.getRows())) {
                     return Result.ok();
                 }
+                System.out.println("isRecordsEquals beforeImage row");
+                beforeImage.getRows().forEach(System.out::println);
+                System.out.println("isRecordsEquals beforeImage row");
+                System.out.println("isRecordsEquals afterImage row");
+                afterImage.getRows().forEach(System.out::println);
+                System.out.println("isRecordsEquals afterImage row");
+
                 return compareRows(beforeImage.getTableMeta(), beforeImage.getRows(), afterImage.getRows());
             } else {
                 return Result.build(false, null);
@@ -162,12 +170,15 @@ public class DataCompareUtils {
         Map<String, Map<String, Field>> oldRowsMap = rowListToMap(oldRows, tableMetaData.getPrimaryKeyOnlyName());
         // new row to map
         Map<String, Map<String, Field>> newRowsMap = rowListToMap(newRows, tableMetaData.getPrimaryKeyOnlyName());
+        System.out.println("compareRows oldRowsMap    " + oldRowsMap);
+        System.out.println("compareRows newRowsMap    "  + newRowsMap);
         // compare data
         for (Map.Entry<String, Map<String, Field>> oldEntry : oldRowsMap.entrySet()) {
             String key = oldEntry.getKey();
             Map<String, Field> oldRow = oldEntry.getValue();
             Map<String, Field> newRow = newRowsMap.get(key);
             if (newRow == null) {
+                System.out.println("newRow == null");
                 return Result.buildWithParams(false, "compare row failed, rowKey {}, reason [newRow is null]", key);
             }
             for (Map.Entry<String, Field> oldRowEntry : oldRow.entrySet()) {
@@ -175,6 +186,7 @@ public class DataCompareUtils {
                 Field oldField = oldRowEntry.getValue();
                 Field newField = newRow.get(fieldName);
                 if (newField == null) {
+                    System.out.println("newField == null" );
                     return Result.buildWithParams(false, "compare row failed, rowKey {}, fieldName {}, reason [newField is null]", key, fieldName);
                 }
                 Result<Boolean> oldEqualsNewFieldResult = isFieldEquals(oldField, newField);

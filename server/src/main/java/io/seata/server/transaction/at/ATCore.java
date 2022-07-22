@@ -63,6 +63,7 @@ public class ATCore extends AbstractCore {
                 objectMapper = new ObjectMapper();
             }
             try {
+                // 读取xml配置的  skipCheckLock 与  autoCommit
                 Map<String, Object> data = objectMapper.readValue(applicationData, HashMap.class);
                 Object clientAutoCommit = data.get(AUTO_COMMIT);
                 if (clientAutoCommit != null && !(boolean)clientAutoCommit) {
@@ -77,6 +78,7 @@ public class ATCore extends AbstractCore {
             }
         }
         try {
+            // 加锁
             if (!branchSession.lock(autoCommit, skipCheckLock)) {
                 throw new BranchTransactionException(LockKeyConflict,
                     String.format("Global lock acquire failed xid = %s branchId = %s", globalSession.getXid(),

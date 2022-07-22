@@ -16,9 +16,11 @@
 package io.seata.rm.datasource.undo.mysql;
 
 import io.seata.common.loader.LoadLevel;
+import io.seata.rm.datasource.exec.mysql.MySQLInsertIgnoreExecutor;
 import io.seata.rm.datasource.undo.AbstractUndoExecutor;
 import io.seata.rm.datasource.undo.SQLUndoLog;
 import io.seata.rm.datasource.undo.UndoExecutorHolder;
+import io.seata.sqlparser.SQLType;
 import io.seata.sqlparser.util.JdbcConstants;
 
 /**
@@ -42,5 +44,10 @@ public class MySQLUndoExecutorHolder implements UndoExecutorHolder {
     @Override
     public AbstractUndoExecutor getDeleteExecutor(SQLUndoLog sqlUndoLog) {
         return new MySQLUndoDeleteExecutor(sqlUndoLog);
+    }
+
+    @Override
+    public AbstractUndoExecutor getInsertIgnoreExecutor(SQLUndoLog sqlUndoLog) {
+        return new MySQLUndoInsertExecutor(sqlUndoLog);
     }
 }

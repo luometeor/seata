@@ -45,4 +45,12 @@ public interface UndoExecutorHolder {
      * @return the specific UndoExecutor
      */
     AbstractUndoExecutor getDeleteExecutor(SQLUndoLog sqlUndoLog);
+
+    /**
+     *  get the specific Insert Ignore UndoExecutor by sqlUndoLog
+     * @param sqlUndoLog the sqlUndoLog
+     * @return the specific UndoExecutor
+     */
+    AbstractUndoExecutor getInsertIgnoreExecutor(SQLUndoLog sqlUndoLog);
+
 }

@@ -80,6 +80,7 @@ public class OracleInsertExecutor extends BaseInsertExecutor implements Sequence
         List<Object> pkValues = pkValuesMap.get(pkKey);
 
         if (!pkValues.isEmpty() && pkValues.get(0) instanceof SqlSequenceExpr) {
+            // 通过Sequence中获取
             pkValuesMap.put(pkKey, getPkValuesBySequence((SqlSequenceExpr) pkValues.get(0)));
         } else if (pkValues.size() == 1 && pkValues.get(0) instanceof SqlMethodExpr) {
             pkValuesMap.put(pkKey, getGeneratedKeys());

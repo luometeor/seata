@@ -241,17 +241,27 @@ public class EnhancedServiceLoader {
 
     private static class InnerEnhancedServiceLoader<S> {
         private static final Logger LOGGER = LoggerFactory.getLogger(InnerEnhancedServiceLoader.class);
+        // SPI 默认路径
         private static final String SERVICES_DIRECTORY = "META-INF/services/";
         private static final String SEATA_DIRECTORY = "META-INF/seata/";
 
+        // just use a map to cache
         private static final ConcurrentMap<Class<?>, InnerEnhancedServiceLoader<?>> SERVICE_LOADERS =
                 new ConcurrentHashMap<>();
-
+        // 每一个 class 都有一个 InnerEnhancedServiceLoader，存储在上面的SERVICE_LOADERS 属性中
         private final Class<S> type;
+
+
+        // class and @LevelLoad info holder
         private final Holder<List<ExtensionDefinition>> definitionsHolder = new Holder<>();
+        // 最终返回的是definitionToInstanceMap 中Holder加载的服务，使用泛型，可以加载一组服务或具体一个服务
         private final ConcurrentMap<ExtensionDefinition, Holder<Object>> definitionToInstanceMap =
                 new ConcurrentHashMap<>();
+
+        // 当前class名字s到ExtensionDefinition的缓存，加载一组服务
         private final ConcurrentMap<String, List<ExtensionDefinition>> nameToDefinitionsMap = new ConcurrentHashMap<>();
+        // 当前class到ExtensionDefinition的缓存， 作用是 检测当前的class是否已经被加载过了，加载过了的话，会形成ExtensionDefinition定义，加载过的话，那么类加载器必须相同
+        // 通过class可以具体加载一个服务
         private final ConcurrentMap<Class<?>, ExtensionDefinition> classToDefinitionMap = new ConcurrentHashMap<>();
 
         private InnerEnhancedServiceLoader(Class<S> type) {
@@ -263,7 +273,7 @@ public class EnhancedServiceLoader {
          *
          * @param type the type of the extension point
          * @param <S>  the type
-         * @return the service loader
+         * @return the service loader ，就是 InnerEnhancedServiceLoader了
          */
         private static <S> InnerEnhancedServiceLoader<S> getServiceLoader(Class<S> type) {
             if (type == null) {
@@ -466,6 +476,7 @@ public class EnhancedServiceLoader {
 
         private List<Class> loadAllExtensionClass(ClassLoader loader) {
             List<ExtensionDefinition> definitions = definitionsHolder.get();
+            // 双重检测，避免同一个 接口（类） 被加载两次
             if (definitions == null) {
                 synchronized (definitionsHolder) {
                     definitions = definitionsHolder.get();
@@ -482,6 +493,7 @@ public class EnhancedServiceLoader {
         private List<ExtensionDefinition> findAllExtensionDefinition(ClassLoader loader) {
             List<ExtensionDefinition> extensionDefinitions = new ArrayList<>();
             try {
+                // 从以下的目录获取 实现类
                 loadFile(SERVICES_DIRECTORY, loader, extensionDefinitions);
                 loadFile(SEATA_DIRECTORY, loader, extensionDefinitions);
             } catch (IOException e) {
@@ -514,6 +526,7 @@ public class EnhancedServiceLoader {
         @SuppressWarnings("rawtypes")
         private void loadFile(String dir, ClassLoader loader, List<ExtensionDefinition> extensions)
                 throws IOException {
+            // 精确的定位到interface
             String fileName = dir + type.getName();
             Enumeration<java.net.URL> urls;
             if (loader != null) {
@@ -558,10 +571,12 @@ public class EnhancedServiceLoader {
             throws ClassNotFoundException {
             //Check whether the definition has been loaded
             if (!isDefinitionContainsClazz(className, loader)) {
+                // 类加载
                 Class<?> clazz = Class.forName(className, true, loader);
                 String serviceName = null;
                 Integer priority = 0;
                 Scope scope = Scope.SINGLETON;
+                // 解析@LoadLevel
                 LoadLevel loadLevel = clazz.getAnnotation(LoadLevel.class);
                 if (loadLevel != null) {
                     serviceName = loadLevel.name();
@@ -569,6 +584,7 @@ public class EnhancedServiceLoader {
                     scope = loadLevel.scope();
                 }
                 ExtensionDefinition result = new ExtensionDefinition(serviceName, priority, scope, clazz);
+                // class对象 到 ExtensionDefinition 的集合
                 classToDefinitionMap.put(clazz, result);
                 if (serviceName != null) {
                     CollectionUtils.computeIfAbsent(nameToDefinitionsMap, serviceName, e -> new ArrayList<>())
@@ -632,6 +648,7 @@ public class EnhancedServiceLoader {
 
         /**
          * Helper Class for hold a value.
+         * a value is an instance
          * @param <T>
          */
         private static class Holder<T> {

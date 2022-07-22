@@ -114,6 +114,7 @@ public abstract class AbstractUndoExecutor {
      * @throws SQLException the sql exception
      */
     public void executeOn(Connection conn) throws SQLException {
+        // AT 模式是提起commit，那么有可能出现回滚的时候，数据已经被别的事务进行操作了，那么显然不能直接根据
         if (IS_UNDO_DATA_VALIDATION_ENABLE && !dataValidationAndGoOn(conn)) {
             return;
         }
@@ -233,6 +234,7 @@ public abstract class AbstractUndoExecutor {
 
         // Compare current data with before data
         // No need undo if the before data snapshot is equivalent to the after data snapshot.
+        // 一般情况下不会发生，这种情况不需要回滚
         Result<Boolean> beforeEqualsAfterResult = DataCompareUtils.isRecordsEquals(beforeRecords, afterRecords);
         if (beforeEqualsAfterResult.getResult()) {
             if (LOGGER.isInfoEnabled()) {
@@ -244,14 +246,21 @@ public abstract class AbstractUndoExecutor {
         }
 
         // Validate if data is dirty.
+        // 验证是否有脏数据，根据后镜像的
         TableRecords currentRecords = queryCurrentRecords(conn);
         // compare with current data and after image.
+        // 后镜像与当前镜像相同，没有脏数据，应该是回滚
+        System.out.println("对比后镜像 与 当前镜像");
         Result<Boolean> afterEqualsCurrentResult = DataCompareUtils.isRecordsEquals(afterRecords, currentRecords);
+        System.out.println("对比后镜像 与 当前镜像");
         if (!afterEqualsCurrentResult.getResult()) {
 
             // If current data is not equivalent to the after data, then compare the current data with the before 
             // data, too. No need continue to undo if current data is equivalent to the before data snapshot
+            // 后镜像与当前镜像不相同，前镜像与 当前镜像相同，那不需要回滚，因为这次操作 刚好被别的操作 补偿了
+            System.out.println("对比前镜像 与 当前镜像");
             Result<Boolean> beforeEqualsCurrentResult = DataCompareUtils.isRecordsEquals(beforeRecords, currentRecords);
+            System.out.println("对比前镜像 与 当前镜像");
             if (beforeEqualsCurrentResult.getResult()) {
                 if (LOGGER.isInfoEnabled()) {
                     LOGGER.info("Stop rollback because there is no data change " +
@@ -260,12 +269,14 @@ public abstract class AbstractUndoExecutor {
                 // no need continue undo.
                 return false;
             } else {
+                // 后镜像与当前镜像不相同，前镜像与 当前镜像不相同，存在脏数据，无法回滚【不需要回滚】
                 if (LOGGER.isInfoEnabled()) {
                     if (StringUtils.isNotBlank(afterEqualsCurrentResult.getErrMsg())) {
                         LOGGER.info(afterEqualsCurrentResult.getErrMsg(), afterEqualsCurrentResult.getErrMsgParams());
                     }
                 }
                 if (LOGGER.isDebugEnabled()) {
+                    // 打印日志，存在脏数据，寄
                     LOGGER.debug("check dirty data failed, old and new data are not equal, " +
                             "tableName:[" + sqlUndoLog.getTableName() + "]," +
                             "oldRows:[" + JSON.toJSONString(afterRecords.getRows()) + "]," +

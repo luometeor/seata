@@ -148,6 +148,7 @@ public class DefaultGlobalTransaction implements GlobalTransaction {
     @SuppressWarnings("lgtm[java/constant-comparison]")
     @Override
     public void rollback() throws TransactionException {
+        // TM才能 开启回滚命令
         if (role == GlobalTransactionRole.Participant) {
             // Participant has no responsibility of rollback
             if (LOGGER.isDebugEnabled()) {
@@ -162,6 +163,7 @@ public class DefaultGlobalTransaction implements GlobalTransaction {
             while (retry > 0) {
                 try {
                     retry--;
+                    // 调用server 的 rollback
                     status = transactionManager.rollback(xid);
                     break;
                 } catch (Throwable ex) {

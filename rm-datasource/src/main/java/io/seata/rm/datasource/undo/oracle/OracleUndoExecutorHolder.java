@@ -43,4 +43,9 @@ public class OracleUndoExecutorHolder implements UndoExecutorHolder {
     public AbstractUndoExecutor getDeleteExecutor(SQLUndoLog sqlUndoLog) {
         return new OracleUndoDeleteExecutor(sqlUndoLog);
     }
+
+    @Override
+    public AbstractUndoExecutor getInsertIgnoreExecutor(SQLUndoLog sqlUndoLog) {
+        return null;
+    }
 }

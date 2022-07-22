@@ -125,6 +125,7 @@ public final class ColumnUtils {
             // like "scheme"."id" `scheme`.`id`
             String str = escape.value + DOT + escape.value;
             int index = colName.indexOf(str);
+            // 情况 ： `scheme`.`id`
             if (index > -1) {
                 return colName.substring(1, index) + DOT + colName.substring(index + str.length(), colName.length() - 1);
             }

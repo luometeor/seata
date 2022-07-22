@@ -25,11 +25,10 @@ import io.seata.common.util.CollectionUtils;
  * @author guoyao
  */
 public class TableMetaCacheFactory {
-
     private static final Map<String, TableMetaCache> TABLE_META_CACHE_MAP = new ConcurrentHashMap<>();
 
     /**
-     * get table meta cache
+     * get table meta cache  根据@LoadLevel获取接口的实现类
      *
      * @param dbType the db type
      * @return table meta cache

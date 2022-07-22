@@ -16,27 +16,39 @@
 package io.seata.rm.datasource.exec;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.Objects;
+import java.util.StringJoiner;
+import java.util.stream.Collectors;
 
+import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import io.seata.common.exception.NotSupportYetException;
 import io.seata.common.exception.ShouldNeverHappenException;
 import io.seata.common.util.CollectionUtils;
+import io.seata.common.util.IOUtil;
 import io.seata.rm.datasource.ColumnUtils;
+import io.seata.rm.datasource.ConnectionProxy;
 import io.seata.rm.datasource.PreparedStatementProxy;
 import io.seata.rm.datasource.StatementProxy;
 import io.seata.rm.datasource.sql.struct.ColumnMeta;
+import io.seata.rm.datasource.sql.struct.Row;
+import io.seata.rm.datasource.sql.struct.TableMeta;
 import io.seata.rm.datasource.sql.struct.TableRecords;
+import io.seata.rm.datasource.undo.SQLUndoLog;
 import io.seata.sqlparser.SQLInsertRecognizer;
 import io.seata.sqlparser.SQLRecognizer;
+import io.seata.sqlparser.SQLType;
 import io.seata.sqlparser.struct.Null;
 import io.seata.sqlparser.struct.Sequenceable;
 import io.seata.sqlparser.struct.SqlDefaultExpr;
@@ -47,6 +59,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The Base Insert Executor.
+ *
  * @author jsbxyyx
  */
 public abstract class BaseInsertExecutor<T, S extends Statement> extends AbstractDMLBaseExecutor<T, S> implements InsertExecutor<T> {
@@ -54,6 +67,13 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
     private static final Logger LOGGER = LoggerFactory.getLogger(BaseInsertExecutor.class);
 
     protected static final String PLACEHOLDER = "?";
+
+    protected static final String FOR_UPDATE = " FOR UPDATE";
+
+    /**
+     * the params of selectSQL, value is the unique index
+     */
+    public HashMap<List<String>, List<Object>> paramAppenderMap;
 
     /**
      * Instantiates a new Abstract dml base executor.
@@ -65,6 +85,19 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
     public BaseInsertExecutor(StatementProxy<S> statementProxy, StatementCallback<T, S> statementCallback,
                               SQLRecognizer sqlRecognizer) {
         super(statementProxy, statementCallback, sqlRecognizer);
+    }
+
+
+    @Override
+    protected void prepareUndoLog(TableRecords beforeImage, TableRecords afterImage) {
+        if (beforeImage.getRows().isEmpty() && afterImage.getRows().isEmpty()) {
+            return;
+        }
+        ConnectionProxy connectionProxy = statementProxy.getConnectionProxy();
+        TableRecords lockKeyRecords = afterImage;
+        String lockKeys = buildLockKey(lockKeyRecords);
+        connectionProxy.appendLockKey(lockKeys);
+        buildUndoItemAll(connectionProxy, beforeImage, afterImage);
     }
 
     @Override
@@ -92,7 +125,81 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
     }
 
     /**
+     * build a SQLUndoLog
+     *
+     * @param beforeImage the before image
+     * @param afterImage  the after image
+     */
+    protected void buildUndoItemAll(ConnectionProxy connectionProxy, TableRecords beforeImage, TableRecords afterImage) {
+        // the situation of normal insert or insert select when select is empty
+        if (CollectionUtils.isEmpty(beforeImage.getRows())) {
+            SQLUndoLog sqlUndoLog = buildUndoItem(SQLType.INSERT, TableRecords.empty(getTableMeta()), afterImage);
+            connectionProxy.appendUndoLog(sqlUndoLog);
+            return;
+        }
+        Map<SQLType, List<Row>> undoRowMap = buildUndoRow(beforeImage, afterImage);
+        undoRowMap.forEach(((sqlType, rows) -> {
+            if (CollectionUtils.isNotEmpty(rows)) {
+                TableRecords partAfterImage = new TableRecords(afterImage.getTableMeta());
+                partAfterImage.setRows(rows);
+                connectionProxy.appendUndoLog(buildUndoItem(sqlType, beforeImage, partAfterImage));
+            }
+        }));
+    }
+
+    /**
+     * build the undo row when happens collision,
+     * when there has no collision but execute method, just throw exception
+     *
+     * @param beforeImage before image
+     * @param afterImage  after image
+     * @return Map<SQLType, List < Row>>
+     */
+    protected Map<SQLType, List<Row>> buildUndoRow(TableRecords beforeImage, TableRecords afterImage) {
+        throw new ShouldNeverHappenException("");
+    }
+
+
+    /**
+     * build a SQLUndoLog
+     *
+     * @param sqlType
+     * @param beforeImage
+     * @param afterImage
+     * @return sqlUndoLog the sql undo log
+     */
+    protected SQLUndoLog buildUndoItem(SQLType sqlType, TableRecords beforeImage, TableRecords afterImage) {
+        String tableName = sqlRecognizer.getTableName();
+        SQLUndoLog sqlUndoLog = new SQLUndoLog();
+        sqlUndoLog.setSqlType(sqlType);
+        sqlUndoLog.setTableName(tableName);
+        sqlUndoLog.setBeforeImage(beforeImage);
+        sqlUndoLog.setAfterImage(afterImage);
+        return sqlUndoLog;
+    }
+
+
+    public TableRecords buildTableRecords2(TableMeta tableMeta, String selectSQL, List<List<Object>> sequenceValues) throws SQLException {
+        ResultSet rs = null;
+        try (PreparedStatement ps = statementProxy.getConnection().prepareStatement(selectSQL + FOR_UPDATE)) {
+            if (CollectionUtils.isNotEmpty(sequenceValues)) {
+                int i = 1;
+                for (List<Object> sequenceValue : sequenceValues) {
+                    for (Object o : sequenceValue) {
+                        ps.setObject(i++, o);
+                    }
+                }
+            }
+            rs = ps.executeQuery();
+            return TableRecords.buildRecords(tableMeta, rs);
+        } finally {
+            IOUtil.close(rs);
+        }
+    }
+
+    /**
      * judge sql specify column
+     *
      * @return true: contains column. false: not contains column.
      */
     protected boolean containsColumns() {
@@ -101,6 +208,9 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
 
     /**
      * get pk index
+     * 如果用户填写的sql包含列的话，查看列中 PK 的index
+     * 没有填写的话，相当于默认的列名，在表结构默认列名中获取 index
+     *
      * @return the key is pk column name and the value is index of the pk column
      */
     protected Map<String, Integer> getPkIndex() {
@@ -131,11 +241,11 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
 
     /**
      * parse primary key value from statement.
+     *
      * @return
      */
     protected Map<String, List<Object>> parsePkValuesFromStatement() {
         // insert values including PK
-        SQLInsertRecognizer recognizer = (SQLInsertRecognizer) sqlRecognizer;
         final Map<String, Integer> pkIndexMap = getPkIndex();
         if (pkIndexMap.isEmpty()) {
             throw new ShouldNeverHappenException("pkIndex is not found");
@@ -144,8 +254,8 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
         boolean ps = true;
         if (statementProxy instanceof PreparedStatementProxy) {
             PreparedStatementProxy preparedStatementProxy = (PreparedStatementProxy) statementProxy;
-
-            List<List<Object>> insertRows = recognizer.getInsertRows(pkIndexMap.values());
+            // 从insert row 中找 pkIndex的value， 如果没有指定的话，那么默认就是？
+            List<List<Object>> insertRows = getInsertRows(pkIndexMap.values());
             if (insertRows != null && !insertRows.isEmpty()) {
                 Map<Integer, ArrayList<Object>> parameters = preparedStatementProxy.getParameters();
                 final int rowSize = insertRows.size();
@@ -183,6 +293,7 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
                                 }
                             }
                             int idx = totalPlaceholderNum - currentRowPlaceholderNum + pkIndex - currentRowNotPlaceholderNumBeforePkIndex;
+                            // 如果主键是 ？ ，那么orm框架在  setParameter的 时候，是设置为null
                             ArrayList<Object> parameter = parameters.get(idx + 1);
                             pkValues.addAll(parameter);
                         } else {
@@ -196,7 +307,8 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
             }
         } else {
             ps = false;
-            List<List<Object>> insertRows = recognizer.getInsertRows(pkIndexMap.values());
+            //todo ?
+            List<List<Object>> insertRows = getInsertRows(pkIndexMap.values());
             for (List<Object> row : insertRows) {
                 pkIndexMap.forEach((pkKey, pkIndex) -> {
                     List<Object> pkValues = pkValuesMap.get(pkKey);
@@ -209,6 +321,7 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
             }
         }
         if (pkValuesMap.isEmpty()) {
+            // 又没有写 insert表中的列， 又没有 values 的值
             throw new ShouldNeverHappenException("pkValuesMap is empty");
         }
         boolean b = this.checkPkValues(pkValuesMap, ps);
@@ -219,7 +332,19 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
     }
 
     /**
+     * user for insert select
+     *
+     * @param primaryKeyIndex the primary key index
+     * @return
+     */
+    protected List<List<Object>> getInsertRows(Collection<Integer> primaryKeyIndex) {
+        SQLInsertRecognizer recognizer = (SQLInsertRecognizer) sqlRecognizer;
+        return recognizer.getInsertRows(primaryKeyIndex);
+    }
+
+    /**
      * default get generated keys.
+     *
      * @return
      * @throws SQLException
      */
@@ -331,6 +456,7 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
 
     /**
      * check pk values for single pk
+     *
      * @param pkValues pkValues
      * @param ps       true: is prepared statement. false: normal statement.
      * @return true: support. false: not support.
@@ -413,6 +539,122 @@ public abstract class BaseInsertExecutor<T, S extends Statement> extends Abstrac
             return true;
         }
         return false;
+    }
+
+
+    /**
+     * build image sql
+     *
+     * @param tableMeta
+     * @return image sql
+     */
+    public String buildImageSQL(TableMeta tableMeta) {
+        SQLInsertRecognizer recognizer = (SQLInsertRecognizer) sqlRecognizer;
+        int insertNum = getInsertParamsValue().size();
+        Map<String, ArrayList<Object>> imageParamperterMap = buildImageParamperters(recognizer);
+        // todo diff
+      //  StringBuilder prefix = new StringBuilder("SELECT " + Joiner.on(",").join(tableMeta.getPrimaryKeyOnlyName()));
+        String prefix = "SELECT * ";
+        StringBuilder suffix = new StringBuilder(" FROM ").append(getFromTableInSQL());
+        for (int i = 0; i < insertNum; i++) {
+            int finalI = i;
+            tableMeta.getAllIndexes().forEach((k, v) -> {
+                if (!v.isNonUnique()) {
+                    List<String> columnList = new ArrayList<>(v.getValues().size());
+                    List<Object> columnValue = new ArrayList<>(v.getValues().size());
+                    for (ColumnMeta m : v.getValues()) {
+                        String columnName = m.getColumnName();
+                        if(columnName.equals(recognizer.getHintColumnName())) {
+                            break;
+                        }
+                        if (imageParamperterMap.get(columnName) == null && m.getColumnDef() != null) {
+                            columnList.add(columnName);
+                            columnValue.add("DEFAULT(" + columnName + ")");
+                            continue;
+                        }
+                        if ((imageParamperterMap.get(columnName) == null && m.getColumnDef() == null) || imageParamperterMap.get(columnName).get(finalI) == null || imageParamperterMap.get(columnName).get(finalI) instanceof Null) {
+                            if (!"PRIMARY".equalsIgnoreCase(k)) {
+                                columnList.add(columnName);
+                                columnValue.add("NULL");
+                                continue;
+                            }
+                            // break for the situation of composite primary key
+                            break;
+                        }
+                        columnList.add(columnName);
+                        columnValue.add(imageParamperterMap.get(columnName).get(finalI));
+                    }
+                    if (CollectionUtils.isNotEmpty(columnList)) {
+                        CollectionUtils.computeIfAbsent(paramAppenderMap, columnList, e -> new ArrayList<>())
+                                .addAll(columnValue);
+                    }
+                }
+            });
+        }
+        suffix.append(" WHERE ");
+        paramAppenderMap.forEach((columnsName, columnsValue) -> {
+            suffix.append("(");
+            suffix.append(Joiner.on(",").join(columnsName));
+            suffix.append(") in(");
+            for (int i = 0; i < columnsValue.size() / columnsName.size(); i++) {
+                suffix.append("(");
+                for (int j = 0; j < columnsName.size(); j++) {
+                    suffix.append("?,");
+                }
+                suffix.insert(suffix.length() - 1, ")");
+            }
+            suffix.deleteCharAt(suffix.length() - 1);
+            suffix.append(") OR ");
+        });
+        suffix.delete(suffix.length() - 4, suffix.length() - 1);
+        StringJoiner selectSQLJoin = new StringJoiner(", ", prefix.toString(), suffix.toString());
+        return selectSQLJoin.toString();
+    }
+
+    protected Map<String, ArrayList<Object>> buildImageParamperters(SQLInsertRecognizer recognizer) {
+        Map<Integer, ArrayList<Object>> parameters = ((PreparedStatementProxy) statementProxy).getParameters();
+        //  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        List<String> insertParamsList = getInsertParamsValue();
+        List<String> insertColumns = Optional.ofNullable(recognizer.getInsertColumns()).map(list -> list.stream()
+                .map(column -> ColumnUtils.delEscape(column, getDbType())).collect(Collectors.toList())).orElse(null);
+        // todo test
+        if (CollectionUtils.isEmpty(insertColumns)) {
+            insertColumns = getTableMeta(recognizer.getTableName()).getDefaultTableColumn();
+        }
+        Map<String, ArrayList<Object>> imageParamperterMap = new HashMap<>(insertColumns.size(),1);
+        int paramIndex = 1;
+        for (String insertParams : insertParamsList) {
+            String[] insertParamsArray = insertParams.split(",");
+            for (int i = 0; i < insertColumns.size(); i++) {
+                String m = ColumnUtils.delEscape(insertColumns.get(i), getDbType());
+                String params = insertParamsArray[i];
+                ArrayList<Object> imageListTemp = imageParamperterMap.computeIfAbsent(m, k -> new ArrayList<>());
+                if ("?".equals(params.trim())) {
+                    ArrayList<Object> objects = parameters.get(paramIndex);
+                    imageListTemp.addAll(objects);
+                    paramIndex++;
+                } else if (params instanceof String) {
+                    // params is characterstring constant
+                    if ((params.trim().startsWith("'") && params.trim().endsWith("'")) || params.trim().startsWith("\"") && params.trim().endsWith("\"")) {
+                        params = params.trim();
+                        params = params.substring(1, params.length() - 1);
+                    }
+                    imageListTemp.add(params);
+                } else {
+                    imageListTemp.add(params);
+                }
+                imageParamperterMap.put(m, imageListTemp);
+            }
+        }
+        if (Objects.isNull(paramAppenderMap)) {
+            paramAppenderMap = new HashMap<>(imageParamperterMap.size(), 1.001f);
+        }
+        return imageParamperterMap;
+    }
+
+    protected List<String> getInsertParamsValue() {
+        SQLInsertRecognizer recognizer = (SQLInsertRecognizer) sqlRecognizer;
+        return recognizer.getInsertParamsValue();
     }
 
 }

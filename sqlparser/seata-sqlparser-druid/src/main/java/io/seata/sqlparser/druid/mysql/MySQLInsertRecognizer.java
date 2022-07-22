@@ -18,7 +18,10 @@ package io.seata.sqlparser.druid.mysql;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+
 import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
@@ -54,12 +57,14 @@ public class MySQLInsertRecognizer extends BaseMySQLRecognizer implements SQLIns
      */
     public MySQLInsertRecognizer(String originalSQL, SQLStatement ast) {
         super(originalSQL);
-        this.ast = (MySqlInsertStatement)ast;
+        this.ast = (MySqlInsertStatement) ast;
     }
 
     @Override
     public SQLType getSQLType() {
-        return CollectionUtils.isNotEmpty(ast.getDuplicateKeyUpdate()) ? SQLType.INSERT_ON_DUPLICATE_UPDATE : SQLType.INSERT;
+        return ast.getQuery() != null ? SQLType.INSERT_SELECT
+                : CollectionUtils.isNotEmpty(ast.getDuplicateKeyUpdate()) ? SQLType.INSERT_ON_DUPLICATE_UPDATE
+                : ast.isIgnore() ? SQLType.INSERT_IGNORE : SQLType.INSERT;
     }
 
     @Override
@@ -97,7 +102,7 @@ public class MySQLInsertRecognizer extends BaseMySQLRecognizer implements SQLIns
         List<String> list = new ArrayList<>(columnSQLExprs.size());
         for (SQLExpr expr : columnSQLExprs) {
             if (expr instanceof SQLIdentifierExpr) {
-                list.add(((SQLIdentifierExpr)expr).getName());
+                list.add(((SQLIdentifierExpr) expr).getName());
             } else {
                 wrapSQLParsingException(expr);
             }
@@ -107,9 +112,11 @@ public class MySQLInsertRecognizer extends BaseMySQLRecognizer implements SQLIns
 
     @Override
     public List<List<Object>> getInsertRows(Collection<Integer> primaryKeyIndex) {
+        // valuesClauses 为 insert into xx values() 的指，such as    [ VALUES (1, 1, 1),  VALUES (2, 2, 2)]
         List<SQLInsertStatement.ValuesClause> valuesClauses = ast.getValuesList();
         List<List<Object>> rows = new ArrayList<>(valuesClauses.size());
         for (SQLInsertStatement.ValuesClause valuesClause : valuesClauses) {
+            // 遍历 exprs 获取 values 中的指，一个value 就是 一行 row
             List<SQLExpr> exprs = valuesClause.getValues();
             List<Object> row = new ArrayList<>(exprs.size());
             rows.add(row);
@@ -138,11 +145,11 @@ public class MySQLInsertRecognizer extends BaseMySQLRecognizer implements SQLIns
     public List<String> getInsertParamsValue() {
         List<SQLInsertStatement.ValuesClause> valuesList = ast.getValuesList();
         List<String> list = new ArrayList<>();
-        for (SQLInsertStatement.ValuesClause m: valuesList) {
+        for (SQLInsertStatement.ValuesClause m : valuesList) {
             String values = m.toString().replace("VALUES", "").trim();
             // when all params is constant, the length of values less than 1
             if (values.length() > 1) {
-                values = values.substring(1,values.length() - 1);
+                values = values.substring(1, values.length() - 1);
             }
             list.add(values);
         }
@@ -157,14 +164,29 @@ public class MySQLInsertRecognizer extends BaseMySQLRecognizer implements SQLIns
         }
         List<String> list = new ArrayList<>(columnSQLExprs.size());
         for (SQLExpr exprLeft : columnSQLExprs) {
-            SQLExpr expr = ((SQLBinaryOpExpr)exprLeft).getLeft();
+            SQLExpr expr = ((SQLBinaryOpExpr) exprLeft).getLeft();
             if (expr instanceof SQLIdentifierExpr) {
-                list.add(((SQLIdentifierExpr)expr).getName());
+                list.add(((SQLIdentifierExpr) expr).getName());
             } else {
                 wrapSQLParsingException(expr);
             }
         }
         return list;
+    }
+
+    @Override
+    public String getQuerySQL() {
+        return Optional.ofNullable(ast.getQuery()).map(SQLObjectImpl::toString).orElse(null);
+    }
+
+    @Override
+    public String getHintColumnName() {
+        return null;
+    }
+
+    @Override
+    public boolean isIgnore() {
+        return ast.isIgnore();
     }
 
     @Override
